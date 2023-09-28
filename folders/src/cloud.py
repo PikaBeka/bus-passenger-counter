@@ -1,0 +1,29 @@
+import boto3
+
+client = boto3.client(
+    "s3",
+    # aws_access_key_id="3rk6M3VBuOIEVvyZ5R4A",
+    # aws_secret_access_key="oJ6Sg1RXD0av593TRpSjyRm2ie6kxAbtpjUfvuMn",
+    aws_access_key_id="eLsPxc1ntuTqavYVhnvc",
+    aws_secret_access_key="0IgMaMG3U4AqhRUHZJXbUrSQ0UC26JVtobMpuM79",
+    endpoint_url="http://192.168.0.134:9000"
+)
+
+
+def get_video_url(key):
+    response = client.generate_presigned_url(
+        'get_object', Params={'Bucket': "machine-learning", 'Key': key})
+    return response
+
+
+def get_preview_url(key):
+    response = client.generate_presigned_url(
+        'get_object', Params={'Bucket': "previews", 'Key': key})
+    return response
+
+def post_video(file_name, key):
+    client.upload_file(file_name, "machine-learning", key)
+
+
+def post_preview(file_name, key):
+    client.upload_file(file_name, "previews", key)

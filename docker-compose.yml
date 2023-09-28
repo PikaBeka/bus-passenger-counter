@@ -1,0 +1,83 @@
+version: '3.7'
+
+services:
+  minio:
+    image: cleverest-s3:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+      - "40335:40335"
+    environment:
+      MINIO_ROOT_USER: clevtech
+      MINIO_ROOT_PASSWORD: The2ndlaw
+    volumes:
+      - data:/data
+    command: minio server /data --console-address ":9090"
+    restart: always
+    networks:
+      - umai
+
+  # mongodb:
+  #   image: mongo:latest
+  #   ports:
+  #     - "localhost:27017"
+  #   volumes:
+  #     - ./data:/data/db
+  #   networks:
+  #     - umai
+
+  camera:
+    tty: true
+    image: paindefender/images:umai_gpu
+    container_name: camera
+    ports:
+      - "5252:5252"
+    restart: unless-stopped
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+    volumes:
+      - "./folders:/folders"
+    command: python /folders/src/stream.py
+    networks:
+      umai:
+        ipv4_address: 192.168.3.10
+
+  count-service:
+    tty: true
+    image: paindefender/images:umai_gpu
+    container_name: count-service
+    restart: unless-stopped
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+    working_dir: /usr/src/services
+    command: python check_bus_people.py
+    volumes:
+      - "./:/usr/src/services"
+    networks:
+      - umai
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: backend.dockerfile
+      network: host
+    container_name: backend
+    restart: unless-stopped
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/usr/src/app
+    networks:
+      - umai
+
+volumes:
+  data:
+
+
+networks:
+  umai:
+    ipam:
+      config:
+        - subnet: 192.168.3.0/24
