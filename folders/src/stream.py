@@ -16,7 +16,7 @@ cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
 # Check if the pipeline is created successfully
 if not cap.isOpened():
     print("The first camera is not available")
-    URI = f"rtsp://{config.NAME1}:{config.PSWD1}@{config.IP1}"
+    URI = f"rtsp://{config.NAME2}:{config.PSWD2}@{config.IP2}"
     pipeline = f"gst-launch-1.0 rtspsrc location={URI} latency=0 ! rtph265depay ! h265parse ! avdec_h265 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1"
     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
     if not cap.isOpened():
