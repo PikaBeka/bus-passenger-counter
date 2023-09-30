@@ -36,7 +36,7 @@ det_cls = Yolo_detections()
 norfair_det = Norfair_Detections()
 video_writer = video_writer_advanced()
 
-shake_threshold = 20
+shake_threshold = config.SHAKE
 
 prev_gray = None
 prev_pts = None

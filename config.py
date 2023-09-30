@@ -15,3 +15,5 @@ PSWD2 = "The2ndlaw"
 
 LINE_START2 = Point(1245, 0)
 LINE_END2 = Point(803, 1052)
+
+SHAKE = 25
