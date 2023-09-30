@@ -1,8 +1,5 @@
 import cv2
 import socket
-import math
-import pickle
-import sys
 from threading import Thread
 import time
 import config
