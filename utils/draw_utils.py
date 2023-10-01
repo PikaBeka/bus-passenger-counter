@@ -51,6 +51,7 @@ class LineZone:
         self.started_within = set()
         self.in_count: int = 0
         self.out_count: int = 0
+        self.last_tracker_state: bool = False
 
     def trigger(self, detections, trigger_point = 'top_left'):
         """
@@ -74,6 +75,9 @@ class LineZone:
             if tracker_id is None:
                 continue
 
+            if tracker_id in self.counted:
+                continue
+
             # if tracker_id in self.counted.keys():
             #     continue
 
@@ -83,41 +87,23 @@ class LineZone:
                 Point(x=x1, y=y1),
                 Point(x=x1, y=y2),
                 Point(x=x2, y=y1),
-                Point(x=x2, y=y2),
+                Point(x=int((x2+x1)/2), y=int((y2+y1)/2)),
             ]
             triggers = [self.vector.is_in(point=anchor) for anchor in anchors]
 
-            # if tracker_id in self.started_within:
-            #     continue
 
-            # if triggers == [False, False, False, False] and tracker_id not in self.tracker_states.keys():
-            #     self.tracker_states[tracker_id] = False
-            #     self.started_within.add(tracker_id)
-            #     continue
+            tracker_state = triggers[3]
 
-            if trigger_point == 'top_left':
-                tracker_state = triggers[0]
-            else:
-                tracker_state = triggers[3]
-            # print(tracker_state)
-
-            # handle new detection
-            if tracker_id not in self.tracker_states:
+            if tracker_state == False and tracker_id not in self.tracker_states:
                 self.tracker_states[tracker_id] = tracker_state
                 # print("Added tracker_id")
                 continue
-
-            # handle detection on the same side of the line
-            if self.tracker_states.get(tracker_id) == tracker_state:
-                # print("On the same line")
-                continue
-
-            self.tracker_states[tracker_id] = tracker_state
-            self.counted[tracker_id] = True
-            if tracker_state:
-                self.in_count += 1
-            else:
-                self.out_count += 1
+            
+            if tracker_id in self.tracker_states:
+                if tracker_state == True and self.tracker_states[tracker_id] == False:
+                    self.in_count += 1
+                    self.counted[tracker_id] = True
+                # self.out_count += 1
     
     def getY(self):
         return (self.vector.start.y + self.vector.end.y) / 2

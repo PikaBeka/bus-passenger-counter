@@ -51,25 +51,26 @@ services:
     devices:
       - /dev/nvidia0:/dev/nvidia0
     working_dir: /usr/src/services
-    command: python check_bus_people_1.py
+    command: python test.py
     volumes:
       - "./:/usr/src/services"
     networks:
       - umai
 
-  count-service-2:
-    tty: true
-    image: paindefender/images:umai_gpu
-    container_name: count-service-2
-    restart: always
-    devices:
-      - /dev/nvidia0:/dev/nvidia0
-    working_dir: /usr/src/services
-    command: python check_bus_people_2.py
-    volumes:
-      - "./:/usr/src/services"
-    networks:
-      - umai
+  # count-service-2:
+  #   tty: true
+  #   image: paindefender/images:umai_gpu
+  #   container_name: count-service-2
+  #   restart: always
+  #   devices:
+  #     - /dev/nvidia0:/dev/nvidia0
+  #   working_dir: /usr/src/services
+  #   # command: python test1.py
+  #   volumes:
+  #     - "./:/usr/src/services"
+  #   networks:
+  #     - umai
+  
   # backend:
   #   build:
   #     context: ./backend

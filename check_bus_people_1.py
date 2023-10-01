@@ -13,13 +13,13 @@ if DEBUG:
 else:
     # URI = 0
     URI = f"rtsp://{config.NAME1}:{config.PSWD1}@{config.IP1}"
-    WIDTH = 1920
-    HEIGHT = 1080
+    WIDTH = 960
+    HEIGHT = 540
     DISCONNECT_TIMEOUT = 60
 
-    pipeline = f"gst-launch-1.0 rtspsrc location={URI} latency=0 ! rtph265depay ! h265parse ! avdec_h265 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1"
+    #pipeline = f"gst-launch-1.0 rtspsrc location={URI} latency=0 ! rtph265depay ! h265parse ! avdec_h265 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1"
 
-    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+    cap = cv2.VideoCapture(URI)#pipeline, cv2.CAP_GSTREAMER)
 
 if not cap.isOpened():
     print("Camera not connected")
@@ -119,15 +119,17 @@ while True:
     if ret == False:
         print("Error on read")
         break
-    frame = cv2.resize(frame, (1920, 1080))
+    frame = cv2.resize(frame, (960, 540))
     status = check_shake(frame)
-    if status == False:
-        print("No shaking")
-        video_writer.start_recording()
-        frame = check_crossed(frame)
-    else:
-        # video_writer.release()
-        print("shaking")
+    # if status == False:
+    #     print("No shaking")
+    #video_writer.start_recording()
+    frame = check_crossed(frame)
+    cv2.imshow("frame", frame)
+    cv2.waitKey(10)
+    # else:
+    #     # video_writer.release()
+    #     print("shaking")
     
     # if DEBUG:
     #     cv2.imshow("Bus", frame)
