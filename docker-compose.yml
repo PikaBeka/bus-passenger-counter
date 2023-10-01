@@ -45,18 +45,17 @@ services:
 
   count-service-1:
     tty: true
-    image: paindefender/images:umai_gpu
-    container_name: count-service-1
+    image: paindefender/images:umai_cpu
+    container_name: count-service-test
     restart: always
     devices:
       - /dev/nvidia0:/dev/nvidia0
     working_dir: /usr/src/services
-    command: python test.py
+    command: python3 test.py
     volumes:
       - "./:/usr/src/services"
     networks:
       - umai
-
   # count-service-2:
   #   tty: true
   #   image: paindefender/images:umai_gpu
@@ -70,7 +69,7 @@ services:
   #     - "./:/usr/src/services"
   #   networks:
   #     - umai
-  
+
   # backend:
   #   build:
   #     context: ./backend
