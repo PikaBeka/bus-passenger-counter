@@ -3,8 +3,8 @@ import config
 import datetime
 import time
 
-# URI = f"rtsp://{config.NAME1}:{config.PSWD1}@{config.IP1}"
-URI = "input/busfinal.mp4"
+URI = f"rtsp://{config.NAME1}:{config.PSWD1}@{config.IP1}"
+# URI = "input/busfinal.mp4"
 
 cap = cv2.VideoCapture(URI)
 if not cap.isOpened():
