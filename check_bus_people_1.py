@@ -1,15 +1,27 @@
 from ultralytics import YOLO
-from utils.draw_utils import LineZone
-from utils.cls_git import Yolo_detections, Norfair_Detections, video_writer_advanced
+from utils.draw_utils import LineZone, TrackableObject
+from utils.cls_git import (
+    Yolo_detections,
+    Norfair_Detections,
+    video_writer_advanced
+)
 import cv2
 import config
+from utils.bus_utils import (
+    check_shake,
+    check_door,
+    update_status,
+    draw_line,
+    put_in_out_text,
+    filter_boxes_near_door,
+    downscale_boxes,
+)
+import time
 
 DEBUG = 0
 
 if DEBUG:
-    cap = cv2.VideoCapture('./input/busfinal.mp4')
-    # cap = cv2.VideoCapture('./input/shake.mp4')
-    # cap = cv2.VideoCapture('./input/abzal_bus.mp4')
+    cap = cv2.VideoCapture('./input/test/test_8.avi')
 else:
     # URI = 0
     URI = f"rtsp://{config.NAME1}:{config.PSWD1}@{config.IP1}"
@@ -17,93 +29,50 @@ else:
     HEIGHT = 540
     DISCONNECT_TIMEOUT = 60
 
-    #pipeline = f"gst-launch-1.0 rtspsrc location={URI} latency=0 ! rtph265depay ! h265parse ! avdec_h265 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1"
+    pipeline = f"gst-launch-1.0 rtspsrc location={URI} latency=0 ! rtph265depay ! h265parse ! avdec_h265 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1"
 
-    cap = cv2.VideoCapture(URI)#pipeline, cv2.CAP_GSTREAMER)
+    # pipeline, cv2.CAP_GSTREAMER)
+    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
 
 if not cap.isOpened():
     print("Camera not connected")
     exit()
 else:
-    print("Connected")
-
-
-# LINE_START = Point(620, 675)
-# LINE_END = Point(1007, 612)
+    print("Connected camera 1")
 
 line_counter = LineZone(start=config.LINE_START1, end=config.LINE_END1)
-det_cls = Yolo_detections()
+det_cls = Yolo_detections(model='best.pt', task='predict')
 norfair_det = Norfair_Detections()
 video_writer = video_writer_advanced()
+trackableObjects = {}
 
-shake_threshold = config.SHAKE
-
-prev_gray = None
-prev_pts = None
-def check_shake(frame):
-    global prev_gray, prev_pts
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-    if prev_gray is None:
-        prev_gray = gray
-        prev_pts = cv2.goodFeaturesToTrack(prev_gray, maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7)
-
-    next_pts, status, error = cv2.calcOpticalFlowPyrLK(prev_gray, gray, prev_pts, None)
-
-    good_new = next_pts[status == 1]
-    good_old = prev_pts[status == 1]
-
-    mean_distance = cv2.norm(good_new - good_old) / len(good_new)
-
-    if mean_distance > shake_threshold:
-        return True
-
-    prev_gray = gray.copy()
-    prev_pts = good_new.reshape(-1, 1, 2)
-
-    return False
 
 def check_crossed(frame):
-    yolo_det = det_cls.detect(frame)
+    yolo_det = det_cls.detect(frame, conf=0.35, iou=0.72)
 
-    norf_res = norfair_det.update(yolo_det)
+    yolo_det = filter_boxes_near_door(yolo_det, 190, 780)
+
+    yolo_det_scaled = downscale_boxes(yolo_det)
+
+    norf_res = norfair_det.update(yolo_det_scaled)
 
     norfair_det.draw_bboxes(res=norf_res, frame=frame)
 
-    line_counter.trigger(detections=norf_res)
+    for detection in norf_res:
+        if detection.id in trackableObjects:
+            trackableObjects[detection.id].update(detection)
+        else:
+            trackableObjects[detection.id] = TrackableObject(detection)
+    line_counter.trigger(tracks=trackableObjects, mode='camera1')
 
-    cv2.line(
-        frame,
-        (line_counter.vector.start.x, line_counter.vector.start.y),
-        (line_counter.vector.end.x, line_counter.vector.end.y),
-        (0, 0, 255),
-        2,
-        lineType=cv2.LINE_AA,
-        shift=0,
-    )
-    
-    cv2.putText(
-        frame,
-        f"Out count:{line_counter.out_count}",
-        (50, 50),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (255, 0, 0),
-        2,
-        cv2.LINE_AA
-    )
+    start = (line_counter.vector.start.x, line_counter.vector.start.y)
+    end = (line_counter.vector.end.x, line_counter.vector.end.y)
+    draw_line(frame, start, end)
 
-    cv2.putText(
-        frame,
-        f"In count:{line_counter.in_count}",
-        (50, 100),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (255, 0, 0),
-        2,
-        cv2.LINE_AA
-    )
+    out_count = line_counter.out_count
+    in_count = line_counter.in_count
+
+    put_in_out_text(frame, in_count, out_count)
 
     if DEBUG:
         print(f"In {line_counter.in_count}, out {line_counter.out_count}")
@@ -113,28 +82,34 @@ def check_crossed(frame):
     return frame
 
 
+door_det_cls = Yolo_detections(model='door1.pt')
+
+global_door_status = 'close'
+prev_status = 'close'
+start = time.time()
+
 while True:
-    # if DEBUG:
     ret, frame = cap.read()
     if ret == False:
         print("Error on read")
         break
     frame = cv2.resize(frame, (960, 540))
-    status = check_shake(frame)
-    # if status == False:
-    #     print("No shaking")
-    #video_writer.start_recording()
-    frame = check_crossed(frame)
-    cv2.imshow("frame", frame)
-    cv2.waitKey(10)
-    # else:
-    #     # video_writer.release()
-    #     print("shaking")
-    
-    # if DEBUG:
-    #     cv2.imshow("Bus", frame)
-    #     if cv2.waitKey(1) & 0xFF == ord('q'):
-    #         break
+    door_status = check_door(door_det_cls, frame)
+    if door_status == 'open':
+        global_door_status = 'open'
+        start = time.time()
+    elif door_status == 'close' and time.time() - start > 4:
+        global_door_status = 'close'
+        line_counter.clear()
+    if global_door_status == 'open':
+        video_writer.start_recording()
+        frame = check_crossed(frame)
+    else:
+        video_writer.release()
+    if DEBUG:
+        cv2.imshow("Bus", frame)
+        if cv2.waitKey(0) & 0xFF == ord('q'):
+            break
 
 if DEBUG:
     print('Finished, releasing cap')

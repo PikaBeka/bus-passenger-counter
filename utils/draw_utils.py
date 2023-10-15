@@ -1,6 +1,7 @@
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 import numpy as np
 import cv2
+
 
 class Point:
     x: int
@@ -9,7 +10,7 @@ class Point:
     def __init__(self, x: int, y: int):
         self.x: int = x
         self.y: int = y
-    
+
     def toTuple(self):
         return (self.x, self.y)
 
@@ -31,6 +32,25 @@ class Vector:
         return cross_product < 0
 
 
+class TrackableObject():
+    def __init__(self, detection):
+        self.id = detection.id
+        x1, y1 = int(detection.estimate[0, 0]), int(detection.estimate[0, 1])
+        x2, y2 = int(detection.estimate[0, 2]), int(detection.estimate[0, 3])
+        self.xyxy = [x1, y1, x2, y2]
+        x_center = (x1 + x2) // 2
+        y_center = (y1 + y2) // 2
+        self.centroids = [[x_center, y_center]]
+
+    def update(self, detection):
+        x1, y1 = int(detection.estimate[0, 0]), int(detection.estimate[0, 1])
+        x2, y2 = int(detection.estimate[0, 2]), int(detection.estimate[0, 3])
+        self.xyxy = [x1, y1, x2, y2]
+        x_center = (x1 + x2) // 2
+        y_center = (y1 + y2) // 2
+        self.centroids.append([x_center, y_center])
+
+
 class LineZone:
     """
     Count the number of objects that cross a line.
@@ -48,12 +68,12 @@ class LineZone:
         self.vector = Vector(start=start, end=end)
         self.tracker_states: Dict[str, bool] = {}
         self.counted: Dict[int, bool] = {}
-        self.started_within = set()
+        self.centroids: Dict[int, List] = {}
+        self.trigger_points: Dict[int, str] = {}
         self.in_count: int = 0
         self.out_count: int = 0
-        self.last_tracker_state: bool = False
 
-    def trigger(self, detections, trigger_point = 'top_left'):
+    def trigger(self, tracks, trigger_point='top_left', mode='normal'):
         """
         Update the in_count and out_count for the detections that cross the line.
 
@@ -61,16 +81,12 @@ class LineZone:
             detections (Detections): The detections for which to update the counts.
 
         """
-        xyxy_arr = []
-        trackers = []
-        for res in detections:
-            trackers.append(res.id)
-            x1, y1 = int(res.estimate[0, 0]), int(res.estimate[0, 1])
-            x2, y2 = int(res.estimate[0, 2]), int(res.estimate[0, 3])
-            xyxy_arr.append([x1, y1, x2, y2])
-        # xyxy_arr, _, trackers, _ = detections
 
-        for xyxy, tracker_id in zip(xyxy_arr, trackers):
+        for trackableObject in tracks.values():
+            # print(trackableObject)
+            # print(type(trackableObject))
+            tracker_id = trackableObject.id
+
             # handle detections with no tracker_id
             if tracker_id is None:
                 continue
@@ -78,35 +94,67 @@ class LineZone:
             if tracker_id in self.counted:
                 continue
 
-            # if tracker_id in self.counted.keys():
-            #     continue
-
             # we check if all four anchors of bbox are on the same side of vector
-            x1, y1, x2, y2 = xyxy
+            x1, y1, x2, y2 = trackableObject.xyxy
             anchors = [
                 Point(x=x1, y=y1),
                 Point(x=x1, y=y2),
                 Point(x=x2, y=y1),
-                Point(x=int((x2+x1)/2), y=int((y2+y1)/2)),
+                Point(x=x2, y=y2),
             ]
             triggers = [self.vector.is_in(point=anchor) for anchor in anchors]
 
+            y = [c[1] for c in trackableObject.centroids]
+            direction = trackableObject.centroids[0][1] - np.mean(y)
 
-            tracker_state = triggers[3]
+            if tracker_id not in self.trigger_points:
+                if mode == 'camera1':
+                    if direction == 0:
+                        continue
+                    if direction < 0:
+                        self.trigger_points[tracker_id] = 'top left'
+                    else:
+                        self.trigger_points[tracker_id] = 'bottom right'
+                else:
+                    if y1 <= self.getY():
+                        self.trigger_points[tracker_id] = 'top left'
+                    else:
+                        self.trigger_points[tracker_id] = 'bottom right'
 
-            if tracker_state == False and tracker_id not in self.tracker_states:
+            # print(f"{tracker_id} directions is {direction}")
+            # print(f"Trigger point: {self.trigger_points[tracker_id]}")
+
+            if self.trigger_points[tracker_id] == 'top left':
+                tracker_state = triggers[0]
+            else:
+                tracker_state = triggers[3]
+
+            if tracker_id not in self.tracker_states:
                 self.tracker_states[tracker_id] = tracker_state
                 # print("Added tracker_id")
                 continue
-            
-            if tracker_id in self.tracker_states:
-                if tracker_state == True and self.tracker_states[tracker_id] == False:
-                    self.in_count += 1
-                    self.counted[tracker_id] = True
-                # self.out_count += 1
-    
+
+            # handle detection on the same side of the line
+            if self.tracker_states.get(tracker_id) == tracker_state:
+                # print("On the same line")
+                continue
+
+            self.tracker_states[tracker_id] = tracker_state
+            self.counted[tracker_id] = True
+            if tracker_state:
+                self.out_count += 1
+            else:
+                self.in_count += 1
+        # print()
+
     def getY(self):
         return (self.vector.start.y + self.vector.end.y) / 2
+
+    def clear(self):
+        self.tracker_states: Dict[str, bool] = {}
+        self.counted: Dict[int, bool] = {}
+        self.centroids: Dict[int, List] = {}
+
 
 def polygon_to_mask(polygon: np.ndarray, resolution_wh: Tuple[int, int]) -> np.ndarray:
     width, height = resolution_wh
@@ -114,6 +162,7 @@ def polygon_to_mask(polygon: np.ndarray, resolution_wh: Tuple[int, int]) -> np.n
 
     cv2.fillPoly(mask, [polygon], color=1)
     return mask
+
 
 class PolygonZone:
     """
@@ -161,17 +210,19 @@ class PolygonZone:
         is_in_zone = self.mask[y, x]
         self.current_count = np.sum(is_in_zone)
         return is_in_zone.astype(bool)
-    
+
     def getHeight(self):
         average_top = (self.polygon[0] + self.polygon[1]) / 2
         average_bottom = (self.polygon[2] + self.polygon[3]) / 2
         return average_bottom[1] - average_top[1]
-    
+
+
 def draw_lines_in_pose(frame, pointA, pointB):
     x1, y1 = pointA
     x2, y2 = pointB
 
     cv2.line(frame, (x1, y1), (x2, y2), (0, 0, 255), 1)
+
 
 def draw_pose(frame, keypoints):
     for keypoint in keypoints:
@@ -179,8 +230,9 @@ def draw_pose(frame, keypoints):
             break
         for point in keypoint:
             x, y = point
-            cv2.circle(frame, (x, y), radius=3, color=(0, 0, 255), thickness=-1)
-        
+            cv2.circle(frame, (x, y), radius=3,
+                       color=(0, 0, 255), thickness=-1)
+
         # head
         draw_lines_in_pose(frame, keypoint[4], keypoint[2])
         draw_lines_in_pose(frame, keypoint[2], keypoint[0])

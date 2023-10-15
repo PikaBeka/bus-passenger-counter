@@ -29,22 +29,24 @@ class Settings:
     if not os.path.exists(file_for_detections):
         os.makedirs(file_for_detections)
 
+
 setting = Settings()
+
 
 class Yolo_detections:
     """Class with results of detecting people with YOLOv8 model"""
 
-    def __init__(self, task = 'predict', model='yolov8s.pt'):
+    def __init__(self, task='predict', model='yolov8s.pt'):
         # we use tensorrt speeded-up weights
         if task == 'predict':
             self.model = YOLO(model)
         elif task == 'pose':
             self.model = YOLO("services/models/yolov8s-pose.pt")
 
-    def detect(self, frame, classes=[0], centers=False, conf = 0.4):
+    def detect(self, frame, classes=[0], centers=False, conf=0.4, iou=0.7):
         """Detecting people"""
         yolo_detections = self.model.predict(
-            frame, classes=classes, conf=conf, verbose=False
+            frame, classes=classes, conf=conf, verbose=False, iou=iou
         )
         res = yolo_detections[0].boxes.cpu().numpy()
         if centers:
@@ -54,7 +56,7 @@ class Yolo_detections:
         cls = res.cls.astype(np.uint8)
         conf = res.conf
         return boxes, cls, conf
-    
+
     def track(self, frame):
         results = self.model.track(frame, classes=[0], persist=True, verbose=False, tracker='botsort.yaml')[
             0].boxes.cpu().numpy()
@@ -69,17 +71,24 @@ class Yolo_detections:
         conf = results.conf
 
         return boxes, clss, track_ids, conf
-    
+
     def pose(self, frame):
-        results = self.model.track(frame, verbose=False, conf=0.4, tracker='botsort.yaml')
+        results = self.model.track(
+            frame, verbose=False, conf=0.4, tracker='botsort.yaml')
 
         return results
+
 
 class Norfair_Detections:
     """Norfair is used as a tracker standard in our company"""
 
     def __init__(self):
-        self.tracker = Tracker(distance_function="euclidean", distance_threshold=300)
+        self.tracker = Tracker(
+            distance_function="euclidean",
+            distance_threshold=100,
+            # hit_counter_max=5,
+            initialization_delay=3,
+        )
 
     def transform_yolo2norfair(self, yolo):
         """Pass the result of yolo detections for Norfair Tracker"""
@@ -109,8 +118,11 @@ class Norfair_Detections:
             track_id = box.id
             x1, y1 = int(box.estimate[0, 0]), int(box.estimate[0, 1])
             x2, y2 = int(box.estimate[0, 2]), int(box.estimate[0, 3])
-            cv2.putText(frame, str(track_id), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, str(track_id), (x1, y1+20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
+
+
 class video_writer_advanced:
     """The more advanced class for video recording"""
 
@@ -134,7 +146,8 @@ class video_writer_advanced:
             current_datetime = datetime.now()
             formatted_date = current_datetime.strftime("%Y-%m-%d")
             formatted_time = current_datetime.strftime("%H:%M:%S")
-            self.save_file = setting.file_for_detections + formatted_date + " " + formatted_time + " " + self.id + ".avi"
+            self.save_file = setting.file_for_detections + formatted_date + \
+                " " + formatted_time + " " + self.id + ".avi"
             self.path = self.save_file
             self.key = self.id + ".avi"
             self.video_writer = cv2.VideoWriter(
@@ -152,7 +165,7 @@ class video_writer_advanced:
             if time.time() - self.record_start_time > 20:
                 self.record = False
                 self.video_writer.release()
-    
+
     def release(self):
         if self.record:
             self.record = False
